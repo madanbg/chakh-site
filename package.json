@@ -1,0 +1,15 @@
+{
+  "name": "chakh-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "QR-powered restaurant menu demo",
+  "scripts": {
+    "test": "node test.js",
+    "check": "python check.py",
+    "qr": "python make-qr.py"
+  },
+  "devDependencies": {
+    "jsdom": "^27.0.0"
+  }
+}

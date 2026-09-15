@@ -1,0 +1,13 @@
+{
+  "name": "chakh",
+  "short_name": "chakh",
+  "description": "Every dish on your menu, explained.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#150F0C",
+  "theme_color": "#150F0C",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

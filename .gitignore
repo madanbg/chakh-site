@@ -1,0 +1,10 @@
+# Local secrets and deployment configuration
+.env
+.env.*
+!.env.example
+
+# Python and Node tooling
+__pycache__/
+*.py[cod]
+node_modules/
+npm-debug.log*

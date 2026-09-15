@@ -1,0 +1,6 @@
+# https://chakh.in/robots.txt
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://chakh.in/sitemap.xml
