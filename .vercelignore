@@ -1,0 +1,8 @@
+# Local development and asset-generation tools. They are not web endpoints.
+check.py
+fetch-photos.py
+make-qr.py
+requirements.txt
+How-to-run-chakh.pdf
+RUNBOOK.md
+LAUNCH.md
