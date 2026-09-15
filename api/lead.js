@@ -1,73 +1,44 @@
-// /api/lead — receives the demo-booking form and emails it to you.
-//
-// Validation runs again here on purpose. Browser-side validation is a
-// convenience for humans; a bot posts straight to this URL and never sees it.
-//
-// Env vars needed:  RESEND_API_KEY, LEAD_TO (your email), LEAD_FROM (a verified
-// sender on your domain, e.g. hello@chakh.in)
-
+// /api/lead — validates demo requests and sends them through Resend.
 const hits = new Map();
-const clean = s => String(s || '').slice(0, 600).replace(/[<>]/g, '');
+const clean = value => String(value || '').slice(0, 600).replace(/[<>]/g, '');
+const json = (body, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: { 'Content-Type': 'application/json; charset=utf-8' }
+});
 
-// The same site can be served from a Vercel preview URL, a Netlify URL, or
-// the final custom domain. Accept its own Host header, plus any explicitly
-// configured production origins, instead of hard-coding one placeholder URL.
 function trustedOrigin(req) {
-  const origin = req.headers.origin || '';
-  if (!origin) return true; // non-browser/server request; validation still runs below
-  const host = req.headers.host || '';
-  const ownOrigins = [`https://${host}`, `http://${host}`];
-  const configured = (process.env.PUBLIC_SITE_ORIGINS || '')
-    .split(',').map(value => value.trim()).filter(Boolean);
-  return ownOrigins.concat(configured).includes(origin);
+  const origin = req.headers.get('origin') || '';
+  if (!origin) return true;
+  const host = req.headers.get('host') || new URL(req.url).host;
+  const configured = (process.env.PUBLIC_SITE_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean);
+  return [`https://${host}`, `http://${host}`, ...configured].includes(origin);
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-
-  if (!trustedOrigin(req)) return res.status(403).json({ error: 'forbidden' });
-
-  const ip = (req.headers['x-forwarded-for'] || 'local').split(',')[0].trim();
+export default async function handler(req, context) {
+  if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+  if (!trustedOrigin(req)) return json({ error: 'forbidden' }, 403);
+  const ip = (req.headers.get('x-forwarded-for') || context?.ip || 'local').split(',')[0].trim();
   const now = Date.now();
-  const log = (hits.get(ip) || []).filter(t => now - t < 3600000);
-  if (log.length >= 5) return res.status(429).json({ error: 'too many' });
+  const log = (hits.get(ip) || []).filter(time => now - time < 3600000);
+  if (log.length >= 5) return json({ error: 'too many' }, 429);
   log.push(now); hits.set(ip, log);
-
-  const b = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-
-  // spam trap 1: honeypot. A human never sees this field, so a filled one is a bot.
-  // Return 200 so the bot thinks it worked and doesn't retry.
-  if (b.company_website) return res.status(200).json({ ok: true });
-
-  // spam trap 2: filled in under three seconds
-  if (b.t && Date.now() - Number(b.t) < 3000) return res.status(400).json({ error: 'too fast' });
-
-  const name = clean(b.name), restaurant = clean(b.restaurant);
-  const email = clean(b.email), note = clean(b.note);
-  const phone = clean(b.phone).replace(/[^0-9]/g, '').slice(-10);
-
-  if (name.length < 2 || restaurant.length < 2) return res.status(400).json({ error: 'missing name' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return res.status(400).json({ error: 'bad email' });
-  if (!/^[6-9]\d{9}$/.test(phone)) return res.status(400).json({ error: 'bad phone' });
-
+  let body;
+  try { body = await req.json(); } catch { return json({ error: 'invalid JSON' }, 400); }
+  if (body.company_website) return json({ ok: true });
+  if (body.t && Date.now() - Number(body.t) < 3000) return json({ error: 'too fast' }, 400);
+  const name = clean(body.name), restaurant = clean(body.restaurant), email = clean(body.email), note = clean(body.note);
+  const phone = clean(body.phone).replace(/[^0-9]/g, '').slice(-10);
+  if (name.length < 2 || restaurant.length < 2) return json({ error: 'missing name' }, 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: 'bad email' }, 400);
+  if (!/^[6-9]\d{9}$/.test(phone)) return json({ error: 'bad phone' }, 400);
   try {
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`
-      },
-      body: JSON.stringify({
-        from: process.env.LEAD_FROM,
-        to: process.env.LEAD_TO,
-        reply_to: email,
-        subject: `Demo request — ${restaurant}`,
-        text: `${name} at ${restaurant}\n${email}\n+91 ${phone}\n\n${note || '(no note)'}`
-      })
+    const upstream = await fetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      body: JSON.stringify({ from: process.env.LEAD_FROM, to: process.env.LEAD_TO, reply_to: email,
+        subject: `Demo request — ${restaurant}`, text: `${name} at ${restaurant}\n${email}\n+91 ${phone}\n\n${note || '(no note)'}` })
     });
-    if (!r.ok) throw new Error(await r.text());
-    return res.status(200).json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ error: 'could not send' });
-  }
+    if (!upstream.ok) throw new Error('Resend rejected request');
+    return json({ ok: true });
+  } catch { return json({ error: 'could not send' }, 500); }
 }
+
+export const config = { path: '/api/lead' };
